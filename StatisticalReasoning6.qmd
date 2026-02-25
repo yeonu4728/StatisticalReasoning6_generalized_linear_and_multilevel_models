@@ -1,0 +1,6 @@
+---
+title: "StatisticalReasoning6"
+subtitle: Sam Larralde, Yeonwoo Lee
+format: pdf
+---
+
