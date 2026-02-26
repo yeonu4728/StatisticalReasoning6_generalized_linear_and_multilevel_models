@@ -1,0 +1,422 @@
+---
+title: "StatisticalReasoning6_generalized_linear_and_multilevel_models"
+author: "Yeonu&Sam"
+format: pdf
+editor: visual
+---
+
+```{r}
+library(tidyverse) # For data wrangling
+library(brms) # For stats
+library(ggeffects) # for plotting model predictions
+# Note: I needed to also install the `insight` and `see` packages to get `modelbased` to install properly; try that if you get similar error messages 
+# install.packages('modelbased') # if you need to install this package
+#install.packages('modelbased')
+#install.packages('faraway')
+library(modelbased) # for plotting model predictions. supports the link scale (ggeffects does not)
+# install.packages('faraway') # if you need to install this package
+library(faraway) # For data on galapagos species richess
+```
+
+```{r}
+?brmsfamily
+```
+
+### Q1.1a
+
+1.  Counts of Clarkia flowers in a meadow\
+    non-negative integers
+
+2.  Whether or not a female elephant seal gives birth\
+    0’s/1’s
+
+3.  The percent cover of red algae in the intertidal\
+    fractions
+
+4.  Growth of a tree from one year to the next\
+    positive real numbers
+
+5.  The spatial area of a forest in square meters\
+    positive real numbers
+
+### Q1.1b
+
+1.  Poisson distribution
+
+2.  Bernoulli distribution
+
+3.  Beta distribution
+
+4.  Gamma distribution
+
+5.  Gamma distribution
+
+### Q1.2
+
+1.  Head width and Forelimb length of Kangaroo Rat
+2.  positive real numbers
+3.  Gamma distribution
+
+## 1.2 GLM with a log link
+
+```{r}
+# Read in the pre-stored data
+data("gala")
+# Check out the first 6 rows
+head(gala)
+?gala
+```
+
+### Q1.3
+
+```{r}
+ggplot(data=gala,
+       aes(x=Endemics))+
+  geom_histogram(bins=50)
+```
+
+It doesn't seem like a Gaussian distribution, because it is not symmetric. The values of x-axis are non-negative integers and it has long tail.
+
+### Q1.4
+
+```{r}
+ggplot(data=gala,
+       aes(x=Elevation,y=Endemics))+
+  geom_point()
+```
+
+```{r}
+# Endemics ~ Elevation
+m.elev <- 
+  brm(data = gala, # Give the model the penguins data
+      # Choose a poisson distribution - THIS IS THE NEW PART!
+      family = poisson(link = "log"),
+      # Specify the model here. 
+      Endemics ~ 1 + Elevation,
+      # Here's where you specify parameters for executing the Markov chains
+      # We're using similar to the defaults, except we set cores to 4 so the analysis runs faster than the default of 1
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      # Save the fitted model object as output - helpful for reloading in the output later
+      file = "output/m.elev")
+```
+
+```{r}
+plot(m.elev)
+```
+
+```{r}
+pairs(m.elev)
+```
+
+```{r}
+summary(m.elev)
+```
+
+### Q1.5
+
+No. The posterior distribution doesn't have one clear peak and the chains don't overlap. Also, the biggest R hat is 1.60 which is far from 1.00
+
+### Q1.6
+
+```{r}
+library(dplyr)
+# 1) making new Elevation_ctr column
+gala_cen_ele<-gala %>% 
+  mutate(
+    Elevation_ctr=Elevation-mean(Elevation)
+  )
+
+# 2) change the brm chain argumments
+
+# Endemics ~ Elevation
+m.elev2 <- 
+  brm(data = gala_cen_ele, # Give the model the penguins data
+      # Choose a poisson distribution - THIS IS THE NEW PART!
+      family = poisson(link = "log"),
+      ###ChatGPT for writing the prior code
+      prior=c(
+        prior(normal(100,50),class="Intercept"),
+        prior(normal(0,1),class=b)
+      ),
+      # Specify the model here. 
+      Endemics ~ 1 + Elevation_ctr,
+      # Here's where you specify parameters for executing the Markov chains
+      # We're using similar to the defaults, except we set cores to 4 so the analysis runs faster than the default of 1
+      iter = 6000, warmup = 4000, chains = 4, cores = 4,
+      # Save the fitted model object as output - helpful for reloading in the output later
+      file = "output/m.elev2")
+```
+
+```{r}
+plot(m.elev2)
+```
+
+```{r}
+summary(m.elev2)
+```
+
+```{r}
+pairs(m.elev2)
+```
+
+```{r}
+preds <- estimate_expectation(m.elev2, by = 'Elevation_ctr')
+plot(preds, show_data = TRUE)
+```
+
+```{r}
+predslog <- estimate_expectation(m.elev2, by = 'Elevation_ctr', predict = 'link')
+plot(predslog)
+```
+
+```{r}
+print(m.elev2, digits = 4)
+```
+
+```{r}
+exp(0.0013)
+```
+
+```{r}
+plot(preds, show_data = TRUE)
+```
+
+### Q1.7
+
+1.  Number of Clarkias blooming as a function of temperature in Celsius: 1.09
+
+    ```{r}
+    exp(1.09)
+    ```
+
+    For every 1 degree Celsius, number of Clarkias blooming increase by 197.4274%.
+
+2.  Density of sea urchins per square meter in a quadrat as a function of number of sea otters: -2.5
+
+    ```{r}
+    exp(-2.5)
+    ```
+
+    For every 1 sea otter, density of sea urchins per square meter in a quadrat decreases by -91.7915%.
+
+3.  Number of tomatoes per plant as a function of kg of fertilizer: 6.24
+
+    ```{r}
+    exp(6.24)
+    ```
+
+For every 1 kg of fertilizer, number of tomatoes per plant increases by 51185.85%.
+
+### Q1.8
+
+```{r}
+# 1) making new non-endemic column
+gala_cen_ele<-gala %>% 
+  mutate(
+    non_Endemics=Species-Endemics
+  )
+
+
+ggplot(data=gala_cen_ele,
+       aes(x=Scruz,y=non_Endemics))+
+  geom_point()
+
+```
+
+### Q1.9
+
+```{r}
+m.dis_end <- 
+  brm(data = gala_cen_ele, # Give the model the penguins data
+      # Choose a poisson distribution - THIS IS THE NEW PART!
+      family = poisson(link = "log"),
+      
+      # Specify the model here. 
+      non_Endemics ~ 1 + Scruz,
+      # Here's where you specify parameters for executing the Markov chains
+      # We're using similar to the defaults, except we set cores to 4 so the analysis runs faster than the default of 1
+      iter = 6000, warmup = 4000, chains = 4, cores = 4,
+      # Save the fitted model object as output - helpful for reloading in the output later
+      file = "output/m.dis_end")
+```
+
+### Q1.10
+
+```{r}
+print(m.dis_end,digits=4)
+```
+
+```{r}
+plot(m.dis_end)
+```
+
+```{r}
+pairs(m.dis_end)
+```
+
+R hat equals 1.00, the chains overlap, and there is one clear peak in posterior distributions. Therefore, the model ran correctly.
+
+### Q1.11
+
+1.  What is the effect of distance from Santa Cruz Island on number of non-endemic species? Report the a) original output on the log scale, b) your backtransformed value, and c) the percent change that this translates to. Describe the effect using the proper units.
+
+    a\) -0.0055
+
+    b\)
+
+    ```{r}
+    exp(-0.0055)
+    ```
+
+    c)\
+    For every 1km distance from Santa Cruz, the number of non-endemic species decreases by -0.54849%.
+
+2.  Does it seem like the slope estimate is different from zero? Why?
+
+    Yes. Because the 95% CI ranges from -0.0066 to -0.0045 which not include zero.
+
+### Q1.12
+
+```{r}
+preds <- estimate_expectation(m.dis_end, by = 'Scruz')
+plot(preds, show_data = TRUE)
+```
+
+```{r}
+predslog <- estimate_expectation(m.dis_end, by = 'Scruz', predict = 'link')
+plot(predslog)
+```
+
+## 1.3 GLM with a logit link
+
+```{r}
+turtle <- faraway::turtle %>% 
+  mutate(total_turtles = male + female,
+         proportion_female = female/total_turtles)
+```
+
+```{r}
+turtle %>% 
+  ggplot(aes(x = temp, y = proportion_female)) +
+  geom_point()
+```
+
+```{r}
+m.turt <- 
+  brm(data = turtle, # Give the model the data
+      # Choose a binomial distribution - THIS IS THE NEW PART!
+      family = binomial(link = "logit"),
+      # Specify the model here. 
+      female | trials(total_turtles) ~ 1 + temp,
+      # Here's where you specify parameters for executing the Markov chains
+      # We're using similar to the defaults, except we set cores to 4 so the analysis runs faster than the default of 1
+      iter = 4000, warmup = 1000, chains = 4, cores = 4,
+      # Save the fitted model object as output - helpful for reloading in the output later
+      file = "output/m.turt")
+```
+
+```{r}
+summary(m.turt)
+```
+
+## 2. Multilevel models
+
+### Q2.1
+
+1.  Student high school graduation rates as a function of: parental income, state of residence, and school district
+
+    -fixed effects: parental income\
+    -random effects: state of residence, school district
+
+2.  Density of kelp as a function of: latitude, site, transect number, and density of sea urchins\
+    -fixed effects: latitude, density of sea urchins\
+    -random effects: site, transect number
+
+3.  Probability of whale giving birth as a function of: age, annual temperature, year, individual ID\
+    -fixed effects: age, annual temperature\
+    -random effects: year, individual ID
+
+```{r}
+pie_crab <- lterdatasampler::pie_crab %>% 
+  mutate(site = as.factor(site))
+```
+
+```{r}
+pie_crab %>% 
+  ggplot(aes(x = air_temp, y = size)) +
+  geom_point()
+```
+
+```{r}
+m.watertemp <- 
+  brm(data = pie_crab, # Give the model the penguins data
+      # Use a gamma distribution
+      family = Gamma(link = "log"),
+      # Specify the model here. 
+      size ~ 1 + water_temp,
+      # Here's where you specify parameters for executing the Markov chains
+      # We're using similar to the defaults, except we set cores to 4 so the analysis runs faster than the default of 1
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      # Save the fitted model object as output - helpful for reloading in the output later
+      file = "output/m.watertemp")
+
+print(m.watertemp, digits = 3)
+```
+
+```{r}
+m.watertemp.site <- 
+  brm(data = pie_crab, # Give the model the penguins data
+      # Use a gamma distribution
+      family = Gamma(link = "log"),
+      # Specify the model here. 
+      size ~ 1 + water_temp + (1|site),
+      # Here's where you specify parameters for executing the Markov chains
+      # We're using similar to the defaults, except we set cores to 4 so the analysis runs faster than the default of 1
+      iter = 2000, warmup = 1000, chains = 4, cores = 4,
+      # Save the fitted model object as output - helpful for reloading in the output later
+      file = "output/m.watertemp.site")
+
+print(m.watertemp.site, digits = 3)
+```
+
+### Q2.2
+
+1.  What is the effect of water_temp on creab size? Report the a) original output on the log scale, b) your backtransformed value, and c) the percent change that this translates to. Describe the effect using the proper units.
+
+    a\) -0.039
+
+    b\)
+
+    ```{r}
+    exp(-0.039)
+    ```
+
+    c\)
+
+    ```{r}
+    (0.9617507-1)*100
+    ```
+
+As 1 degree Celsius water temperature increases, the carapace width of a crab decreases by -3.82493%.
+
+2.  It's different from zero. Because 95% CI ranges from -0.061 to -0.017 which not include zero.
+
+### Q2.3
+
+```{r}
+loo(m.watertemp)
+```
+
+```{r}
+loo(m.watertemp.site)
+```
+
+```{r}
+waic(m.watertemp)
+```
+
+```{r}
+waic(m.watertemp.site)
+```
+
+Because m.watertemp.site has lower WAIC and PSIS value. m.watertemp.site is better predictive model.
